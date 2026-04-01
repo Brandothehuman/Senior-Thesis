@@ -1,0 +1,51 @@
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+library(patchwork)
+
+# 2. Get background map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+map_limits <- coord_sf(xlim = c(-10, 2), ylim = c(54, 61)) # Consistent zoom for all maps
+
+# 3. Prepare Otter Map
+otters_sf <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(Longitude) & !is.na(Latitude)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+p1 <- ggplot() +
+  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = otters_sf, color = "steelblue", size = 0.3, alpha = 0.4) +
+  map_limits +
+  theme_minimal() +
+  labs(title = "Otters")
+
+# 4. Prepare Seagrass Map
+seagrass_sf <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+
+p2 <- ggplot() +
+  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = seagrass_sf, color = "seagreen", size = 0.3, alpha = 0.4) +
+  map_limits +
+  theme_minimal() +
+  labs(title = "Seagrass Meadows")
+
+# 5. Prepare Crab Map
+crabs_sf <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
+  st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
+
+p3 <- ggplot() +
+  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = crabs_sf, color = "orange", size = 0.3, alpha = 0.4) +
+  map_limits +
+  theme_minimal() +
+  labs(title = "Shore Crabs")
+
+# 6. Combine side-by-side using patchwork
+# The | symbol puts them in a row. 
+# plot_annotation adds a title to the entire collection.
+(p1 | p2 | p3) + 
+  plot_annotation(title = "Occurence Comparisons of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs in Scotland",
+                  subtitle = "Individual ranges for Otters, Seagrass, and Crabs")
