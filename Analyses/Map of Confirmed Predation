@@ -1,0 +1,82 @@
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+
+# 1. DEFINE COORDINATE MASKS (Invisible filtering logic)
+make_mask <- function(xmin, xmax, ymin, ymax) {
+  st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326) %>% 
+    st_as_sfc()
+}
+
+island_masks <- list(
+  "Skye"       = make_mask(-6.77, -5.73, 57.01, 57.70),
+  "Pabay"      = make_mask(-5.87, -5.84, 57.26, 57.28),
+  "Barra"      = make_mask(-7.55, -7.34, 56.92, 57.05),
+  "North Uist" = make_mask(-7.59, -7.03, 57.44, 57.71),
+  "South Uist" = make_mask(-7.49, -7.20, 57.12, 57.44),
+  "Tiree"      = make_mask(-7.02, -6.77, 56.45, 56.57),
+  "Coll"       = make_mask(-6.72, -6.39, 56.55, 56.71),
+  "Eigg"       = make_mask(-6.22, -6.06, 56.86, 56.94)
+)
+
+all_islands_mask <- do.call(c, island_masks) %>% st_union()
+
+# 2. CREATE LABELS DATA (Coordinates for names)
+island_labels <- data.frame(
+  name = c("Skye", "Pabay", "Barra", "North Uist", "South Uist", "Tiree", "Coll", "Eigg"),
+  lon  = c(-6.25, -5.80, -7.45, -7.50, -7.35, -6.90, -6.55, -6.14),
+  lat  = c(57.35, 57.30, 57.00, 57.60, 57.28, 56.50, 56.63, 56.90)
+) %>% st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+# 3. LOAD DATA AND APPLY FILTERS
+otters   <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(Longitude) & !is.na(Latitude)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_filter(all_islands_mask)
+
+seagrass <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>%
+  st_filter(all_islands_mask)
+
+crabs    <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
+  st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326) %>%
+  st_filter(all_islands_mask)
+
+# 4. PROJECT AND ANALYZE (Hotspots: Seagrass + Crabs + Otters within 9 miles)
+otters_p <- st_transform(otters, 27700)
+seagrass_p <- st_transform(seagrass, 27700)
+crabs_p <- st_transform(crabs, 27700)
+
+has_crabs <- st_is_within_distance(seagrass_p, crabs_p, dist = 100)
+meadows_with_crabs <- seagrass_p[lengths(has_crabs) > 0, ]
+
+near_otter <- st_is_within_distance(meadows_with_crabs, otters_p, dist = 14484)
+hotspots <- meadows_with_crabs[lengths(near_otter) > 0, ]
+
+# 5. VISUALIZE
+uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf")
+
+ggplot() +
+  # Background Land
+  geom_sf(data = uk_land, fill = "gray95", color = "gray80") +
+  
+  # Seagrass context (Faint)
+  geom_sf(data = seagrass, color = "seagreen", alpha = 0.2, size = 0.8) +
+  
+  # Final Hotspots (Red)
+  geom_sf(data = hotspots, color = "red", size = 3, shape = 18) +
+  
+  # ISLAND NAMES (Labels)
+  geom_sf_text(data = island_labels, aes(label = name), 
+               size = 3.5, fontface = "italic", color = "gray30", 
+               nudge_y = 0.05) +
+  
+  # Zoom to the Hebrides
+  coord_sf(xlim = c(-8.0, -5.5), ylim = c(56.3, 57.8)) +
+  
+  theme_minimal() +
+  labs(title = "Hebridean Biodiversity Hotspots",
+       subtitle = "Labeled Island Analysis (Seagrass, Crabs, and Otters)",
+       caption = "Coordinates used to filter data strictly to island landmasses.")
