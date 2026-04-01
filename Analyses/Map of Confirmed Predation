@@ -77,6 +77,6 @@ ggplot() +
   coord_sf(xlim = c(-8.0, -5.5), ylim = c(56.3, 57.8)) +
   
   theme_minimal() +
-  labs(title = "Hebridean Biodiversity Hotspots",
+  labs(title = "Hotspots on islnds of known predation",
        subtitle = "Labeled Island Analysis (Seagrass, Crabs, and Otters)",
        caption = "Coordinates used to filter data strictly to island landmasses.")
