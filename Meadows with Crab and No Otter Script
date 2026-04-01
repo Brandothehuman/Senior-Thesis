@@ -1,0 +1,57 @@
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+
+# 1. Load the three datasets
+# Note: Using check.names=FALSE to handle the Crab coordinate names
+otters <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(Longitude) & !is.na(Latitude)) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+
+seagrass <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+
+crabs <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+  filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
+  st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
+
+# 2. Project to British National Grid (meters) for accurate dis math
+otters_p <- st_transform(otters, 27700)
+seagrass_p <- st_transform(seagrass, 27700)
+crabs_p <- st_transform(crabs, 27700)
+
+# 3. Find seagrass meadows that contain crabs
+# We use a 100m buffer to account for GPS variance between the two surveys
+has_crabs_idx <- st_is_within_distance(seagrass_p, crabs_p, dist = 100, sparse = FALSE)
+meadows_with_crabs <- seagrass_p[apply(has_crabs_idx, 1, any), ]
+
+# 4. Exclude meadows within 9 miles of an otter
+# 9 miles = 14,484 meters
+dist_9_miles <- 9 * 1609.34
+near_otters_idx <- st_is_within_distance(meadows_with_crabs, otters_p, dist = dist_9_miles, sparse = FALSE)
+
+#! (NOT) operator to keep only meadows where NO otters were found nearby
+safe_meadows <- meadows_with_crabs[!apply(near_otters_idx, 1, any), ]
+
+# 5. Create the Map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+ggplot() +
+  # Background Map
+  geom_sf(data = world, fill = "gray95", color = "gray80") +
+  
+  # Layer 1: All seagrass (ghost layer)
+  geom_sf(data = seagrass, color = "seagreen", size = 0.3, alpha = 0.1) +
+  
+  # Layer 2: Otter sightings
+  geom_sf(data = otters, color = "red", size = 0.5, alpha = 0.05) +
+  
+  # Layer 3: The Result (Bright Green points)
+  geom_sf(data = safe_meadows, color = "chartreuse4", size = 2, shape = 16) +
+  
+  coord_sf(xlim = c(-10, 2), ylim = c(54, 61)) +
+  theme_minimal() +
+  labs(title = "Otter-Free Seagrass Meadows",
+       subtitle = "Meadows with shore crabs and no otter sightings within 9 miles",
+       caption = "Green points indicate meadows with shore crabs and no reported otters nearby.")
