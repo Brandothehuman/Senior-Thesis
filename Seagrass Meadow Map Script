@@ -1,0 +1,31 @@
+# 1. Load the libraries
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+
+# 2. Load the data
+seagrass_data <- read.csv("seagrass_meadows.csv")
+
+# 3. Clean the data
+seagrass_data <- seagrass_data %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE))
+
+# 4. Convert to a geographic (sf) object
+seagrass_sf <- st_as_sf(seagrass_data, 
+                        coords = c("LONGITUDE", "LATITUDE"), 
+                        crs = 4326)
+# 5. Create the Map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+ggplot() +
+  # Draw the background map
+  geom_sf(data = world, fill = "antiquewhite", color = "gray80") +
+  # Plot the seagrass meadows
+  # I've used a green color here to represent seagrass
+  geom_sf(data = seagrass_sf, color = "seagreen", size = 0.6, alpha = 0.5) +
+  # Zoom into the UK and surrounding waters
+  coord_sf(xlim = c(-11, 2), ylim = c(50, 62)) + 
+  theme_minimal() +
+  labs(title = "Seagrass Meadow Locations",
+       subtitle = "Data source: seagrass_meadows.csv",
+       x = "Longitude", y = "Latitude")
