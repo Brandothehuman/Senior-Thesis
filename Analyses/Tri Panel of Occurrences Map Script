@@ -32,7 +32,7 @@ p2 <- ggplot() +
   labs(title = "Seagrass Meadows")
 
 # 5. Prepare Crab Map
-crabs_sf <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+crabs_sf <- read.csv("crab_sightings_cleaned.csv", check.names = FALSE) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
 
