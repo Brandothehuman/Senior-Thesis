@@ -17,5 +17,5 @@ wildlife_data <- wildlife_data %>%
    # Zooming into Scotland/UK where your data is located
    coord_sf(xlim = c(-9, 1), ylim = c(54, 61)) + 
    theme_minimal() +
-   labs(title = "Otter Sightings Map",
+   labs(title = "Otter Occurences Map",
         x = "Longitude", y = "Latitude")
