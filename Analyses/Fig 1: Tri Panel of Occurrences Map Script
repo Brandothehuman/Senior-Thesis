@@ -3,49 +3,63 @@ library(tidyverse)
 library(rnaturalearth)
 library(patchwork)
 
+# 1. Github  URLs
+otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
+crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
+grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
+
 # 2. Get background map data
 world <- ne_countries(scale = "medium", returnclass = "sf")
-map_limits <- coord_sf(xlim = c(-10, 2), ylim = c(54, 61)) # Consistent zoom for all maps
+map_limits <- coord_sf(xlim = c(-10, 2), ylim = c(54, 61))
 
-# 3. Prepare Otter Map
-otters_sf <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
-  filter(!is.na(Longitude) & !is.na(Latitude)) %>%
-  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+# 3. Helper function to handle   column names and spatial conversion
+process_species_data <- function(url) {
+  read.csv(url, check.names = FALSE) %>%
+    # Convert all headers to lowercase to handle "LONGITUDE" vs "longitude"
+    rename_with(tolower) %>%
+    # Use regex matches to find the lat/long columns regardless of extra text in brackets
+    rename(
+      lon = matches("long|lng"),
+      lat = matches("lat")
+    ) %>%
+    filter(!is.na(lon) & !is.na(lat)) %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326)
+}
 
+# 4. Load and Process Data
+otters_sf   <- process_species_data(otter_url)
+seagrass_sf <- process_species_data(grass_url)
+crabs_sf    <- process_species_data(crab_url)
+
+# 5. Create  Plots
 p1 <- ggplot() +
-  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = otters_sf, color = "steelblue", size = 0.3, alpha = 0.4) +
   map_limits +
   theme_minimal() +
   labs(title = "Eurasian Otters")
 
-# 4. Prepare Seagrass Map
-seagrass_sf <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
-  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
-
 p2 <- ggplot() +
-  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = seagrass_sf, color = "seagreen", size = 0.3, alpha = 0.4) +
   map_limits +
   theme_minimal() +
   labs(title = "Seagrass Meadows")
 
-# 5. Prepare Crab Map
-crabs_sf <- read.csv("crab_sightings_cleaned.csv", check.names = FALSE) %>%
-  filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
-  st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
-
 p3 <- ggplot() +
-  geom_sf(data = world, fill = "gray95") +
+  geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = crabs_sf, color = "orange", size = 0.3, alpha = 0.4) +
   map_limits +
   theme_minimal() +
   labs(title = "Green Shore Crabs")
 
 # 6. Combine side-by-side using patchwork
-# The | symbol puts them in a row. 
-# plot_annotation adds a title to the entire collection.
-(p1 | p2 | p3) + 
-  plot_annotation(title = "Occurence of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs in Scotland",
-                  subtitle = "Do I want a subtitle?")
+combined_plot <- (p1 | p2 | p3) + 
+  plot_annotation(
+    title = "Occurrence of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs",
+    subtitle = "Spatial distribution across Scotland coastal regions",
+    caption = "caption loading..."
+  )
+
+# Display plotss
+print(combined_plot)
