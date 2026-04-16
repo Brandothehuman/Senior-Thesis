@@ -2,7 +2,7 @@ library(sf)
 library(tidyverse)
 library(rnaturalearth)
 
-# 1. DEFINE COORDINATE MASKS (Invisible filtering logic)
+# 1. Coorindate Masks for Islands/Coast
 make_mask <- function(xmin, xmax, ymin, ymax) {
   st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326) %>% 
     st_as_sfc()
@@ -21,30 +21,34 @@ island_masks <- list(
 
 all_islands_mask <- do.call(c, island_masks) %>% st_union()
 
-# 2. CREATE LABELS DATA (Coordinates for names)
+# 2. Data Labels (Coordinates for names)
 island_labels <- data.frame(
   name = c("Skye", "Pabay", "Barra", "North Uist", "South Uist", "Tiree", "Coll", "Eigg"),
   lon  = c(-6.25, -5.80, -7.55, -7.50, -7.35, -6.90, -6.55, -6.14),
   lat  = c(57.35, 57.30, 57.00, 57.60, 57.28, 56.50, 56.63, 56.90)
 ) %>% st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
-# 3. LOAD DATA AND APPLY FILTERS
-otters   <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+# 3. Github Data
+otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
+crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
+grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
+
+otters   <- read_csv(otter_url) %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_filter(all_islands_mask)
 
-seagrass <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+seagrass <- read_csv(grass_url) %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>%
   st_filter(all_islands_mask)
 
-crabs    <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+crabs    <- read_csv(crab_url) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326) %>%
   st_filter(all_islands_mask)
 
-# 4. PROJECT AND ANALYZE (Hotspots: Seagrass + Crabs + Otters within 9 miles)
+# 4. Project Hotspots (Hotspots: Seagrass + Crabs + Otters within 9 miles)
 otters_p <- st_transform(otters, 27700)
 seagrass_p <- st_transform(seagrass, 27700)
 crabs_p <- st_transform(crabs, 27700)
@@ -53,9 +57,12 @@ has_crabs <- st_is_within_distance(seagrass_p, crabs_p, dist = 100)
 meadows_with_crabs <- seagrass_p[lengths(has_crabs) > 0, ]
 
 near_otter <- st_is_within_distance(meadows_with_crabs, otters_p, dist = 14484)
-hotspots <- meadows_with_crabs[lengths(near_otter) > 0, ]
+hotspots_p <- meadows_with_crabs[lengths(near_otter) > 0, ]
 
-# 5. VISUALIZE
+# Transform hotspots back for plotting
+hotspots <- st_transform(hotspots_p, 4326)
+
+# 5. Project Map
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf")
 
 ggplot() +
@@ -77,6 +84,6 @@ ggplot() +
   coord_sf(xlim = c(-8.0, -5.5), ylim = c(56.3, 57.8)) +
   
   theme_minimal() +
-  labs(title = "Hotspots on islnds of known predation",
+  labs(title = "Hotspots on islands of known predation",
        subtitle = "Labeled Island Analysis (Seagrass, Crabs, and Otters)",
        caption = "Coordinates used to filter data strictly to island landmasses.")
