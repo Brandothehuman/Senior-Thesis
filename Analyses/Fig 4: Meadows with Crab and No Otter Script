@@ -2,21 +2,25 @@ library(sf)
 library(tidyverse)
 library(rnaturalearth)
 
-# 1. Load the three datasets
-# Note: Using check.names=FALSE to handle the Crab coordinate names
-otters <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+# 1. GitHub
+otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
+crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
+grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
+
+# Using read_csv to handle the URLs directly
+otters <- read_csv(otter_url) %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
 
-seagrass <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+seagrass <- read_csv(grass_url) %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
 
-crabs <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+crabs <- read_csv(crab_url) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
 
-# 2. Project to British National Grid (meters) for accurate dis math
+# 2. Project to British National Grid (meters) for dis math
 otters_p <- st_transform(otters, 27700)
 seagrass_p <- st_transform(seagrass, 27700)
 crabs_p <- st_transform(crabs, 27700)
@@ -32,7 +36,10 @@ dist_9_miles <- 9 * 1609.34
 near_otters_idx <- st_is_within_distance(meadows_with_crabs, otters_p, dist = dist_9_miles, sparse = FALSE)
 
 #! (NOT) operator to keep only meadows where NO otters were found nearby
-safe_meadows <- meadows_with_crabs[!apply(near_otters_idx, 1, any), ]
+safe_meadows_p <- meadows_with_crabs[!apply(near_otters_idx, 1, any), ]
+
+# Transform back to 4326 for plotting with rnaturalearth
+safe_meadows <- st_transform(safe_meadows_p, 4326)
 
 # 5. Create the Map
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -44,7 +51,7 @@ ggplot() +
   # Layer 1: All seagrass (ghost layer)
   geom_sf(data = seagrass, color = "seagreen", size = 0.3, alpha = 0.1) +
   
-  # Layer 2: Otter sightings
+  # Layer 2: Otter sightings (faint red to show exclusion zones)
   geom_sf(data = otters, color = "red", size = 0.5, alpha = 0.05) +
   
   # Layer 3: The Result (Bright Green points)
@@ -54,4 +61,4 @@ ggplot() +
   theme_minimal() +
   labs(title = "Otter-Free Seagrass Meadows",
        subtitle = "Meadows with shore crabs and no otter sightings within 9 miles",
-       caption = "Green points indicate meadows with shore crabs and no reported otters nearby.")
+       caption = "Green points indicate meadows with shore crabs and no otters.")
