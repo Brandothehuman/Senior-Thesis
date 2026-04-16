@@ -17,7 +17,7 @@ p1 <- ggplot() +
   geom_sf(data = otters_sf, color = "steelblue", size = 0.3, alpha = 0.4) +
   map_limits +
   theme_minimal() +
-  labs(title = "Otters")
+  labs(title = "Eurasian Otters")
 
 # 4. Prepare Seagrass Map
 seagrass_sf <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
@@ -41,11 +41,11 @@ p3 <- ggplot() +
   geom_sf(data = crabs_sf, color = "orange", size = 0.3, alpha = 0.4) +
   map_limits +
   theme_minimal() +
-  labs(title = "Shore Crabs")
+  labs(title = "Green Shore Crabs")
 
 # 6. Combine side-by-side using patchwork
 # The | symbol puts them in a row. 
 # plot_annotation adds a title to the entire collection.
 (p1 | p2 | p3) + 
-  plot_annotation(title = "Occurence Comparisons of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs in Scotland",
-                  subtitle = "Individual ranges for Otters, Seagrass, and Crabs")
+  plot_annotation(title = "Occurence of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs in Scotland",
+                  subtitle = "Do I want a subtitle?")
