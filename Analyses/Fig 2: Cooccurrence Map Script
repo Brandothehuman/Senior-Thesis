@@ -2,51 +2,55 @@ library(sf)
 library(tidyverse)
 library(rnaturalearth)
 
-# 1. Load and prepare all three datasets
-# Otters: Longitude / Latitude
-otters <- read.csv("otter_sightings.csv", check.names = FALSE) %>%
+# 1. GitHub
+otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
+crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
+grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
+
+# 2. Process and convert to SF objects Using read_csv (tidyverse) for better handling of the URLs
+otters <- read_csv(otter_url) %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
 
-# Seagrass: LONGITUDE / LATITUDE
-seagrass <- read.csv("seagrass_meadows.csv", check.names = FALSE) %>%
+seagrass <- read_csv(grass_url) %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
 
-# Crabs: Longitude (WGS84) / Latitude (WGS84)
-crabs <- read.csv("crab_sightings.csv", check.names = FALSE) %>%
+crabs <- read_csv(crab_url) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
 
-# 2. Project to British National Grid (EPSG: 27700) for distance adjusment from meters
+# 3. Project to British National Grid (EPSG: 27700) for distance calculations
 otters_p <- st_transform(otters, 27700)
 seagrass_p <- st_transform(seagrass, 27700)
 crabs_p <- st_transform(crabs, 27700)
 
-# 3. STEP 1: Find seagrass meadows containing shorecrabs
-# 100-meter co-location buffer
-seagrass_with_crabs_idx <- st_is_within_distance(seagrass_p, crabs_p, dist = 100, sparse = FALSE)
-seagrass_with_crabs <- seagrass_p[apply(seagrass_with_crabs_idx, 1, any), ]
+# 4. Filter: Seagrass meadows containing shorecrabs (within 100m)
+# lengths() > 0 is a faster way to check for matches in a sparse list
+seagrass_with_crabs <- seagrass_p[lengths(st_is_within_distance(seagrass_p, crabs_p, dist = 100)) > 0, ]
 
-# 4. STEP 2: Filter those for otters within 9 miles (14,484 meters)
+# 5. Filter: Resulting meadows within 9 miles of an otter sighting
 dist_9_miles <- 9 * 1609.34
-final_idx <- st_is_within_distance(seagrass_with_crabs, otters_p, dist = dist_9_miles, sparse = FALSE)
-target_meadows <- seagrass_with_crabs[apply(final_idx, 1, any), ]
+target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = dist_9_miles)) > 0, ]
 
-# 5. Create the Map
+# 6. Transform back to WGS84 for mapping
+target_meadows <- st_transform(target_meadows_p, 4326)
+
+# 7. Create the Map
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
 ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   
-  # Background: All seagrass meadows (very faint)
-  geom_sf(data = seagrass, color = "seagreen", size = 0.3, alpha = 0.1) +
+  # Background: All seagrass meadows (faint)
+  geom_sf(data = seagrass, color = "seagreen", size = 0.5, alpha = 0.2) +
   
-  # RESULTS: Only meadows meeting both criteria
+  # RESULTS: Meadows meeting both criteria (vibrant)
   geom_sf(data = target_meadows, color = "darkgreen", size = 2, shape = 16) +
   
-  coord_sf(xlim = c(-10, 2), ylim = c(54, 61)) +
+  # Focus on the British Isles
+  coord_sf(xlim = c(-10, 2), ylim = c(50, 61), expand = FALSE) +
   theme_minimal() +
   labs(title = "Targeted Seagrass Meadows",
-       subtitle = "Seagrass ,eadows containing shorecrabs with an otter sighting within 9 miles",
-       caption = "Green points indicate meadows meeting both criteria")
+       subtitle = "Meadows containing shorecrabs with an otter sighting within 9 miles",
+       caption = "Analysis based on cleaned Senior Thesis datasets")
