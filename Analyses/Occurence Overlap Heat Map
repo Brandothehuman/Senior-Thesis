@@ -1,0 +1,64 @@
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+library(gstat)
+library(stars)
+
+# 1. Data Import
+otter_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
+crab_url   <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
+grass_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
+
+otters   <- read_csv(otter_url) %>% filter(!is.na(Longitude) & !is.na(Latitude)) %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
+seagrass <- read_csv(grass_url) %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>% st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+crabs    <- read_csv(crab_url) %>% filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>% st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
+
+# 2. Tri Overlap
+otters_p   <- st_transform(otters, 27700)
+seagrass_p <- st_transform(seagrass, 27700)
+crabs_p    <- st_transform(crabs, 27700)
+
+# Filter 1: Seagrass meadows containing shorecrabs (within 100m)
+seagrass_with_crabs <- seagrass_p[lengths(st_is_within_distance(seagrass_p, crabs_p, dist = 100)) > 0, ]
+
+# Filter 2: Resulting meadows within 9 miles of an otter sighting
+dist_9_miles     <- 9 * 1609.34
+target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = dist_9_miles)) > 0, ]
+
+# 3. Create Heatmap Intensity via Density of the Overlap 
+# This counts how many "perfect overlap" meadows are near each other
+target_meadows_p$density <- lengths(st_is_within_distance(target_meadows_p, dist = 5000))
+
+# 4. Grid Generation & IDW
+bbox <- st_bbox(target_meadows_p) %>% st_as_sfc() %>% st_buffer(20000)
+grid <- st_as_stars(bbox, dx = 1000, dy = 1000) %>% st_set_crs(27700)
+
+# Interpolate the density of the triple-overlap points
+idw_res <- idw(density ~ 1, target_meadows_p, grid, idp = 2.0)
+idw_sf  <- st_as_sf(idw_res) %>% st_make_valid()
+
+# 5. Ocean Masking
+uk_land <- ne_countries(scale = 50, country = "united kingdom", returnclass = "sf") %>% 
+  st_transform(27700) %>% st_union()
+
+#  IDW squares that do not touch the land
+ocean_idw <- idw_sf[st_disjoint(idw_sf, uk_land, sparse = FALSE), ]
+ocean_idw_4326 <- st_transform(ocean_idw, 4326)
+
+# 6. Final Mapping
+world <- ne_countries(scale = 50, returnclass = "sf")
+
+ggplot() +
+  geom_sf(data = world, fill = "gray95", color = "gray80") +
+  # The Heatmap: color = NA removes the black outlines
+  geom_sf(data = ocean_idw_4326, aes(fill = var1.pred), color = NA, alpha = 0.8) +
+  scale_fill_viridis_c(option = "inferno", name = "Overlap Intensity") +
+  # Reference Points: The actual meadows that met all criteria
+  geom_sf(data = st_transform(target_meadows_p, 4326), color = "cyan", size = 0.5, alpha = 0.6) +
+  coord_sf(xlim = c(-10, 2), ylim = c(50, 61), expand = FALSE) +
+  theme_minimal() +
+  labs(
+    title = "Triple-Species Overlap Heatmap",
+    subtitle = "Seagrass meadows + Shorecrabs (<100m) + Otters (<9 miles)",
+    caption = "Interpolated Density | Marine Areas Only"
+  )
