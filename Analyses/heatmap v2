@@ -1,41 +1,57 @@
-# 1. Update the Land Mask to High Resolution (Scale 10)
-# Note: This might prompt you to install 'rnaturalearthhires'
+library(sf)
+library(tidyverse)
+library(rnaturalearth)
+library(gstat)
+library(stars)
+
+# 1. Data Import & Filtering (Original Criteria)
+otters   <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv") %>% 
+  filter(!is.na(Longitude) & !is.na(Latitude)) %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>% st_transform(27700)
+
+seagrass <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv") %>% 
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>% st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>% st_transform(27700)
+
+crabs    <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv") %>% 
+  filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>% st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326) %>% st_transform(27700)
+
+seagrass_with_crabs <- seagrass[lengths(st_is_within_distance(seagrass, crabs, dist = 100)) > 0, ]
+target_meadows_p    <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters, dist = 14484)) > 0, ]
+
+# 2. Original Density Math
+target_meadows_p$density <- lengths(st_is_within_distance(target_meadows_p, dist = 5000))
+
+# 3. Create the 10-Mile Coastal Ribbon
+# 10 miles = 16093.4 meters
+dist_10_miles <- 10 * 1609.34
+
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf") %>% 
-  st_transform(27700) %>% 
-  st_union() %>% 
-  st_make_valid()
+  st_transform(27700) %>% st_union() %>% st_make_valid()
 
-# 2. Manually Define the Grid Extent (Covers all of Scotland & Islands)
-# Coordinates in British National Grid (approximate for the whole region)
-scotland_extent <- st_bbox(c(xmin = -50000, xmax = 700000, ymin = 500000, ymax = 1250000), 
-                           crs = st_crs(27700)) %>% 
+# Create a buffer around the land, then subtract the land itself to get the "Marine Ribbon"
+coastal_buffer <- st_buffer(uk_land, dist_10_miles)
+marine_ribbon  <- st_difference(coastal_buffer, uk_land)
+
+# 4. Grid Generation (Covers the ribbon area)
+scotland_box <- st_bbox(c(xmin = -100000, xmax = 750000, ymin = 530000, ymax = 1300000), crs = st_crs(27700)) %>% 
   st_as_sfc()
+grid <- st_as_stars(scotland_box, dx = 2000, dy = 2000) %>% st_set_crs(27700)
 
-# Create a 2km grid over this larger area
-grid <- st_as_stars(scotland_extent, dx = 2000, dy = 2000) %>% st_set_crs(27700)
-
-# 3. Perform IDW
-# We use a larger 'nmax' and 'maxdist' to allow the heat to spread to the islands
-idw_res <- idw(density ~ 1, target_meadows_p, grid, idp = 2.0, maxdist = 50000)
+# 5. IDW Interpolation (Original idp = 2.0)
+idw_res <- idw(density ~ 1, target_meadows_p, grid, idp = 2.0)
 idw_sf  <- st_as_sf(idw_res) %>% st_make_valid()
 
-# 4. Filter for Ocean
-# This removes grid cells that overlap with the high-res UK landmass
-ocean_idw <- idw_sf[st_disjoint(idw_sf, uk_land, sparse = FALSE), ]
+# 6. Clip Heatmap to the Ribbon
+# This ensures color only exists within 10 miles of shore and NOT on land
+ocean_idw <- st_intersection(idw_sf, marine_ribbon)
 ocean_idw_4326 <- st_transform(ocean_idw, 4326)
 
-# 5. Mapping with expanded limits
-world <- ne_countries(scale = 10, returnclass = "sf")
-
+# 7. Final Map
 ggplot() +
-  geom_sf(data = world, fill = "gray95", color = "gray80") +
-  # Heatmap
+  geom_sf(data = ne_countries(scale = 10, returnclass = "sf"), fill = "gray95", color = "gray80") +
+  # The Heatmap restricted to the coastal ribbon
   geom_sf(data = ocean_idw_4326, aes(fill = var1.pred), color = NA, alpha = 0.8) +
-  scale_fill_viridis_c(option = "inferno", name = "Overlap Intensity", na.value = "transparent") +
-  # Visualizing the meadows to see where data is coming from
-  geom_sf(data = st_transform(target_meadows_p, 4326), color = "cyan", size = 0.3) +
-  # Expanded View: Specifically focused on Scotland and its islands
-  coord_sf(xlim = c(-9, 1), ylim = c(54, 61), expand = FALSE) + 
+  scale_fill_viridis_c(option = "inferno", name = "Overlap Intensity") +
+  coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
   theme_minimal() +
-  labs(title = "Scotland Species Overlap Heatmap",
-       subtitle = "High-resolution marine masking for coastal islands")
+  labs(title = "Coastal Species Overlap (10-Mile Limit)",
+       subtitle = "Original IDW intensity restricted to the near-shore marine environment")
