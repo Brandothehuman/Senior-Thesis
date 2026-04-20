@@ -102,11 +102,11 @@ ggplot() +
   geom_sf(data = ireland_4326, fill = "gray95", color = "gray80") +
   geom_sf(data = uk_outline,   fill = "gray95", color = "gray80") +
   geom_sf(data = ocean_idw_4326, aes(fill = var1.pred), color = NA, alpha = 0.8) +
-  scale_fill_viridis_c(option = "inferno", name = "Overlap Intensity") +
+  scale_fill_viridis_c(option = "inferno", name = "Concentration Intensity") +
   coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
   theme_minimal() +
   labs(
-    title    = "Co-occurence of Seagrass meadows, Eurasian otters, and green shore crabs in Scotland.",
-    subtitle = "IDW intensity restricted to Great Britain's near-shore marine environment"
-    caption = "caption loading"
+    title    = "Density of Seagrass meadows, Eurasian otters, and green shore crab co-occurence in Scotland.",
+    subtitle = "IDW of nearshore environment",
+    caption = "caption loading :)"
   )
