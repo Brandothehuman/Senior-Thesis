@@ -57,7 +57,7 @@ p3 <- ggplot() +
   labs(title = "Green Shore Crabs")
 
 # 7. Combine with patchwork
-caption_text <- "**Figure 1.** Occurrence of Eurasian otters, seagrass meadows (*Zostera marina* / *Zostera noltii*), and green shore crabs across coastal regions of Scotland."
+caption_text <- "**Figure 1.** Occurrence of Eurasian otters, seagrass meadows (*Zostera marina* / *Zostera noltii*), and green shore crabs across Scotland."
 
 combined_plot <- (p1 | p2 | p3) +
   plot_annotation(
