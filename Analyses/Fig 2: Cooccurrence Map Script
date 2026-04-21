@@ -1,56 +1,60 @@
 library(sf)
 library(tidyverse)
 library(rnaturalearth)
+library(ggtext)
 
 # 1. GitHub
 otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
 crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
 grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
 
-# 2. Process and convert to SF objects Using read_csv (tidyverse) for better handling of the URLs
+# 2. Process and convert to SF objects
 otters <- read_csv(otter_url) %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
-
 seagrass <- read_csv(grass_url) %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
-
 crabs <- read_csv(crab_url) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326)
 
-# 3. Project to British National Grid (EPSG: 27700) for distance calculations
-otters_p <- st_transform(otters, 27700)
+# 3. Project to British National Grid
+otters_p   <- st_transform(otters,   27700)
 seagrass_p <- st_transform(seagrass, 27700)
-crabs_p <- st_transform(crabs, 27700)
+crabs_p    <- st_transform(crabs,    27700)
 
-# 4. Filter: Seagrass meadows containing shorecrabs (within 100m)
-# lengths() > 0 is a faster way to check for matches in a sparse list
+# 4. Filter seagrass with crabs (within 100m)
 seagrass_with_crabs <- seagrass_p[lengths(st_is_within_distance(seagrass_p, crabs_p, dist = 100)) > 0, ]
 
-# 5. Filter: Resulting meadows within 19.3 km of otter occurence 
-otter_range_m <- 19300
+# 5. Filter resulting meadows within 19.3 km of otter
+OTTER_RANGE_M    <- 19300
 target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = OTTER_RANGE_M)) > 0, ]
 
-# 6. Transform back to WGS84 for mapping
+# 6. Transform back to WGS84
 target_meadows <- st_transform(target_meadows_p, 4326)
 
 # 7. Create the Map
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
+caption_text <- "**Figure 2.** Seagrass meadows containing both green shore crab and Eurasian otter occurrences in Scotland. *Zostera marina* / *Zostera noltii* meadows with green shore crab occurrences within 100 m and Eurasian otter occurrences within 19.3 km (maximum reported coastal home range for marine-foraging otters in Scotland)."
+
 ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
-  
-  # Background: All seagrass meadows (faint)
   geom_sf(data = seagrass, color = "seagreen", size = 0.5, alpha = 0.2) +
-  
-  # RESULTS: Meadows meeting both criteria (vibrant)
   geom_sf(data = target_meadows, color = "darkgreen", size = 2, shape = 16) +
-  
-  # Focus on the British Isles
-  coord_sf(xlim = c(-10, 2), ylim = c(50, 61), expand = FALSE) +
-  theme_minimal() +
-  labs(title = "Targeted Seagrass Meadows",
-       subtitle = "Seagrass meadows that contain shorecrabs and Eurasian otter occurences ",
-       caption = "Seagrass meadows of Zostera marine/Zostera noltii in Scotland that have reported green shore crab occurences within 100 meters and an Eurasian otter occurence within 19.3 km.  The maximum reported home range of coastal, marine-foraging Eurasain otters in Scotland is 19.3 km. ")
+  coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
+  theme_minimal(base_family = "serif", base_size = 12) +
+  labs(
+    title   = NULL,
+    caption = caption_text
+  ) +
+  theme(
+    plot.caption          = element_textbox_simple(
+                              size = 12,
+                              family = "serif",
+                              margin = margin(t = 10),
+                              hjust = 0
+                            ),
+    plot.caption.position = "plot"
+  )
