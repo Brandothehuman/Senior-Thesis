@@ -41,7 +41,7 @@ safe_meadows <- st_transform(safe_meadows_p, 4326)
 # 7. Create the Map
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
-caption_text <- "**Figure 4.**Seagrass meadows (*Zostera marina* / *Zostera noltii*) in Scotland containing green shore crab occurrences within 100 meters and no Eurasian otter occurrences within 19.3 km (maximum reported coastal home range for marine-foraging otters in Scotland)."
+caption_text <- "**Figure 4.** Seagrass meadows (*Zostera marina* / *Zostera noltii*) in Scotland containing green shore crab occurrences within 100 m and no Eurasian otter occurrences within 19.3 km (maximum reported coastal home range for marine-foraging otters in Scotland)."
 
 ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
