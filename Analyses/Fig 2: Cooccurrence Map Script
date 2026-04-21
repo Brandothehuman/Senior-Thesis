@@ -29,7 +29,7 @@ crabs_p <- st_transform(crabs, 27700)
 # lengths() > 0 is a faster way to check for matches in a sparse list
 seagrass_with_crabs <- seagrass_p[lengths(st_is_within_distance(seagrass_p, crabs_p, dist = 100)) > 0, ]
 
-# 5. Filter: Resulting meadows within 9 miles of an otter sighting
+# 5. Filter: Resulting meadows within 19.3 km of otter occurence 
 otter_range_m <- 19300
 target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = OTTER_RANGE_M)) > 0, ]
 
@@ -52,5 +52,5 @@ ggplot() +
   coord_sf(xlim = c(-10, 2), ylim = c(50, 61), expand = FALSE) +
   theme_minimal() +
   labs(title = "Targeted Seagrass Meadows",
-       subtitle = "Meadows containing shorecrabs with an otter sighting within 9 miles",
-       caption = "Analysis based on cleaned Senior Thesis datasets")
+       subtitle = "Seagrass meadows that contain shorecrabs and Eurasian otter occurences ",
+       caption = "Seagrass meadows of Zostera marine/Zostera noltii in Scotland that have reported green shore crab occurences within 100 meters and an Eurasian otter occurence within 19.3 km.  The maximum reported home range of coastal, marine-foraging Eurasain otters in Scotland is 19.3 km. ")
