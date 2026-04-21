@@ -2,22 +2,21 @@ library(sf)
 library(tidyverse)
 library(rnaturalearth)
 library(patchwork)
+library(ggtext)
 
-# 1. Github  URLs
+# 1. Github URLs
 otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
 crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
 grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
 
 # 2. Get background map data
-world <- ne_countries(scale = "medium", returnclass = "sf")
+world      <- ne_countries(scale = "medium", returnclass = "sf")
 map_limits <- coord_sf(xlim = c(-10, 2), ylim = c(54, 61))
 
-# 3. Helper function to handle   column names and spatial conversion
+# 3. Helper function
 process_species_data <- function(url) {
   read.csv(url, check.names = FALSE) %>%
-    # Convert all headers to lowercase to handle "LONGITUDE" vs "longitude"
     rename_with(tolower) %>%
-    # Use regex matches to find the lat/long columns regardless of extra text in brackets
     rename(
       lon = matches("long|lng"),
       lat = matches("lat")
@@ -31,35 +30,48 @@ otters_sf   <- process_species_data(otter_url)
 seagrass_sf <- process_species_data(grass_url)
 crabs_sf    <- process_species_data(crab_url)
 
-# 5. Create  Plots
+# 5. Shared theme
+map_theme <- theme_minimal(base_family = "serif", base_size = 12) +
+  theme(plot.title = element_text(size = 12, family = "serif"))
+
+# 6. Create Plots
 p1 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = otters_sf, color = "steelblue", size = 0.3, alpha = 0.4) +
   map_limits +
-  theme_minimal() +
+  map_theme +
   labs(title = "Eurasian Otters")
 
 p2 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = seagrass_sf, color = "seagreen", size = 0.3, alpha = 0.4) +
   map_limits +
-  theme_minimal() +
+  map_theme +
   labs(title = "Seagrass Meadows")
 
 p3 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = crabs_sf, color = "orange", size = 0.3, alpha = 0.4) +
   map_limits +
-  theme_minimal() +
+  map_theme +
   labs(title = "Green Shore Crabs")
 
-# 6. Combine side-by-side using patchwork
-combined_plot <- (p1 | p2 | p3) + 
+# 7. Combine with patchwork
+caption_text <- "**Figure 1.** Occurrence of Eurasian otters, seagrass meadows (*Zostera marina* / *Zostera noltii*), and green shore crabs across coastal regions of Scotland."
+
+combined_plot <- (p1 | p2 | p3) +
   plot_annotation(
-    title = "Occurrence of Eurasian Otters, Seagrass Meadows, and Green Shore Crabs",
-    subtitle = "Spatial distribution across Scotland coastal regions",
-    caption = "caption loading..."
+    title   = NULL,
+    caption = caption_text,
+    theme   = theme(
+      plot.caption = element_textbox_simple(
+                       size   = 12,
+                       family = "serif",
+                       margin = margin(t = 10),
+                       hjust  = 0
+                     ),
+      plot.caption.position = "plot"
+    )
   )
 
-# Display plotss
 print(combined_plot)
