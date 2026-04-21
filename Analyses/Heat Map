@@ -4,8 +4,8 @@ library(rnaturalearth)
 library(gstat)
 library(stars)
 
-# Constants for filtering and interpolation 
-OTTER_RANGE_M  <- 14484
+# Constants for filtering and interpolation; changed otter range from 9 miles to 19.3 km based on lit rev
+OTTER_RANGE_M  <- 19300
 CRAB_BUFFER_M  <- 100
 DENSITY_RADIUS <- 5000
 
