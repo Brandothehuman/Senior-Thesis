@@ -42,7 +42,7 @@ caption_text <- "**Figure 2.** Seagrass meadows containing both green shore crab
 ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = seagrass, color = "seagreen", size = 0.5, alpha = 0.2) +
-  geom_sf(data = target_meadows, color = "darkgreen", size = 2, shape = 16) +
+  geom_sf(data = target_meadows, color = "chartreuse4", size = 2, shape = 16) +
   coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
   theme_minimal(base_family = "serif", base_size = 12) +
   labs(
