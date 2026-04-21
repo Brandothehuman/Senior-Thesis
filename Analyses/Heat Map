@@ -3,8 +3,9 @@ library(tidyverse)
 library(rnaturalearth)
 library(gstat)
 library(stars)
+library(ggtext)
 
-# Constants for filtering and interpolation; changed otter range from 9 miles to 19.3 km based on lit rev
+# Constants
 OTTER_RANGE_M  <- 19300
 CRAB_BUFFER_M  <- 100
 DENSITY_RADIUS <- 5000
@@ -37,16 +38,13 @@ target_meadows_p$density <- lengths(
 )
 
 # 3. Build Land Layers
-
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf") %>%
   st_transform(4326) %>%
   st_make_valid()
 
-# Island ofGB with  NI cut out manually 
 gb_bbox <- st_bbox(c(xmin = -9, xmax = 2, ymin = 49, ymax = 61), crs = st_crs(4326)) %>%
   st_as_sfc()
 
-# Really frustrating NI exclusion zone because mapper thinks its part of Scotland for some reason
 ni_exclusion <- st_polygon(list(rbind(
   c(-8.25, 54.00),
   c(-5.25, 54.00),
@@ -55,10 +53,8 @@ ni_exclusion <- st_polygon(list(rbind(
   c(-8.25, 54.00)
 ))) %>% st_sfc(crs = 4326)
 
-# GB clipping mask = full bbox minus the NI exclusion zone
 gb_clip_mask <- st_difference(gb_bbox, ni_exclusion)
 
-# Apply Scotland mask to UK
 gb_island <- st_intersection(uk_land, gb_clip_mask) %>%
   st_union() %>%
   st_make_valid() %>%
@@ -68,14 +64,14 @@ ireland <- ne_countries(scale = 10, country = "ireland", returnclass = "sf") %>%
   st_transform(27700) %>%
   st_make_valid()
 
-# 4. Coastal Ribbon  
+# 4. Coastal Ribbon
 dist_10_miles  <- 10 * 1609.34
 coastal_buffer <- st_buffer(gb_island, dist_10_miles)
 marine_ribbon  <- st_difference(coastal_buffer, gb_island) %>%
   st_difference(st_union(ireland)) %>%
   st_make_valid()
 
-# 5. Grid 
+# 5. Grid
 output_bbox <- st_bbox(c(xmin = -9, xmax = 1, ymin = 54.5, ymax = 61),
                        crs = st_crs(4326)) %>%
   st_as_sfc() %>%
@@ -98,15 +94,26 @@ uk_outline   <- ne_countries(scale = 10, country = "united kingdom", returnclass
 ireland_4326 <- ne_countries(scale = 10, country = "ireland", returnclass = "sf")
 
 # 9. Final Map
+
 ggplot() +
   geom_sf(data = ireland_4326, fill = "gray95", color = "gray80") +
   geom_sf(data = uk_outline,   fill = "gray95", color = "gray80") +
   geom_sf(data = ocean_idw_4326, aes(fill = var1.pred), color = NA, alpha = 0.8) +
   scale_fill_viridis_c(option = "inferno", name = "Density Intensity") +
   coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
-  theme_minimal() +
+  theme_minimal(base_family = "serif", base_size = 12) +
   labs(
-    title    = "Density of Seagrass meadows, Eurasian otters, and green shore crab co-occurence in Scotland.",
-    subtitle = "IDW of nearshore environment",
-    caption = "caption loading..."
+    title    = NULL,
+    subtitle = NULL,
+    caption  = "**Figure 5.** Density of seagrass meadows (*Zostera marina* / *Zostera noltii*), Eurasian otter, and green shore crab co-occurrence in Scotland. Inverse distance weighted (IDW) interpolation of co-occurrence hotspots within 10 miles of the Scottish coastline. Seagrass meadows filtered to those containing green shore crab occurrences within 100 m and Eurasian otter occurrences within 19.3 km."
+
+  ) +
+  theme(
+    plot.caption          = element_textbox_simple(
+                              size   = 12,
+                              family = "serif",
+                              margin = margin(t = 10),
+                              hjust  = 0
+                            ),
+    plot.caption.position = "plot"
   )
