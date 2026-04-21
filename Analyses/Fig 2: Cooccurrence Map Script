@@ -30,8 +30,8 @@ crabs_p <- st_transform(crabs, 27700)
 seagrass_with_crabs <- seagrass_p[lengths(st_is_within_distance(seagrass_p, crabs_p, dist = 100)) > 0, ]
 
 # 5. Filter: Resulting meadows within 9 miles of an otter sighting
-dist_9_miles <- 9 * 1609.34
-target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = dist_9_miles)) > 0, ]
+otter_range_m <- 19300
+target_meadows_p <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters_p, dist = OTTER_RANGE_M)) > 0, ]
 
 # 6. Transform back to WGS84 for mapping
 target_meadows <- st_transform(target_meadows_p, 4326)
