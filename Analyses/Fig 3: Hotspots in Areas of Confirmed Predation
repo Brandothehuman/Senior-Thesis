@@ -3,11 +3,12 @@ library(tidyverse)
 library(rnaturalearth)
 library(ggtext)
 
-# 1. Coordinate Masks for Islands/Coast
+# 1. Coordinate Masks
 make_mask <- function(xmin, xmax, ymin, ymax) {
-  st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326) %>% 
+  st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326) %>%
     st_as_sfc()
 }
+
 island_masks <- list(
   "Skye"       = make_mask(-6.77, -5.73, 57.01, 57.70),
   "Pabay"      = make_mask(-5.87, -5.84, 57.26, 57.28),
@@ -16,67 +17,101 @@ island_masks <- list(
   "South Uist" = make_mask(-7.49, -7.20, 57.12, 57.44),
   "Tiree"      = make_mask(-7.02, -6.77, 56.45, 56.57),
   "Coll"       = make_mask(-6.72, -6.39, 56.55, 56.71),
-  "Eigg"       = make_mask(-6.22, -6.06, 56.86, 56.94)
+  "Eigg"       = make_mask(-6.22, -6.06, 56.86, 56.94),
+  "Loch Long"  = make_mask(-4.90, -4.75, 56.00, 56.20),
+  "Holy Loch"  = make_mask(-4.97, -4.88, 55.98, 56.05),
+  "Loch Broom" = make_mask(-5.35, -5.05, 57.80, 57.95),
+  "Shetland"   = make_mask(-1.80, -0.70, 59.80, 60.90)
 )
+
 all_islands_mask <- do.call(c, island_masks) %>% st_union()
 
-# 2. Data Labels (Coordinates for names)
+# Highlight mask (all locations excpet Tiree)
+highlight_masks <- island_masks[names(island_masks) != "Tiree"]
+highlight_union <- do.call(c, highlight_masks) %>% st_union()
+
+# 2. geo Labels
 island_labels <- data.frame(
-  name = c("Skye", "Pabay", "Barra", "North Uist", "South Uist", "Tiree", "Coll", "Eigg"),
-  lon  = c(-6.25, -5.80, -7.55, -7.50, -7.35, -6.90, -6.55, -6.14),
-  lat  = c(57.35, 57.30, 57.00, 57.60, 57.28, 56.50, 56.63, 56.90)
+  name = c("Skye", "Pabay", "Barra", "North Uist", "South Uist",
+           "Tiree", "Coll", "Eigg",
+           "Loch Long &\nHoly Loch", "Loch Broom", "Shetland"),
+  lon  = c(-6.25, -5.80, -7.55, -7.50, -7.35, -6.90, -6.55, -6.14,
+           -4.83, -5.20, -1.25),
+  lat  = c(57.35, 57.30, 57.00, 57.60, 57.28, 56.50, 56.63, 56.90,
+            56.22, 57.98, 60.95)
 ) %>% st_as_sf(coords = c("lon", "lat"), crs = 4326)
 
-# 3. Github Data
+# 3. Load Data
 otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
 crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
 grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
 
-otters   <- read_csv(otter_url) %>%
+otters <- read_csv(otter_url) %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_filter(all_islands_mask)
+
 seagrass <- read_csv(grass_url) %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>%
   st_filter(all_islands_mask)
-crabs    <- read_csv(crab_url) %>%
+
+crabs <- read_csv(crab_url) %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326) %>%
   st_filter(all_islands_mask)
 
-# 4. Project Hotspots
+# 4. Hotspots
 otters_p   <- st_transform(otters,   27700)
 seagrass_p <- st_transform(seagrass, 27700)
 crabs_p    <- st_transform(crabs,    27700)
 
 has_crabs          <- st_is_within_distance(seagrass_p, crabs_p, dist = 100)
 meadows_with_crabs <- seagrass_p[lengths(has_crabs) > 0, ]
-near_otter         <- st_is_within_distance(meadows_with_crabs, otters_p, dist = 14484)
+near_otter         <- st_is_within_distance(meadows_with_crabs, otters_p, dist = 19300)
 hotspots_p         <- meadows_with_crabs[lengths(near_otter) > 0, ]
 hotspots           <- st_transform(hotspots_p, 4326)
 
-# 5. Project Map
+# 5. Base map data
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf")
 
+# Shared coordinate limits
+xlims <- c(-8.0, 0.0)
+ylims <- c(55.8, 61.2)
 
+# Figure
 ggplot() +
   geom_sf(data = uk_land, fill = "gray95", color = "gray80") +
+  # Study region highlights (all except Tiree)
+  geom_sf(
+    data      = highlight_union,
+    fill      = "#2166ac",
+    color     = "#2166ac",
+    alpha     = 0.15,
+    linewidth = 0.4
+  ) +
+  # Seagrass meadows
   geom_sf(data = seagrass, color = "seagreen", alpha = 0.2, size = 0.8) +
+  # Hotspots on top
   geom_sf(data = hotspots, color = "red", size = 3, shape = 18) +
-  geom_sf_text(data = island_labels, aes(label = name),
-               size = 3.5, fontface = "italic", color = "gray30",
-               nudge_y = 0.05) +
-  coord_sf(xlim = c(-8.0, -5.5), ylim = c(56.3, 57.8)) +
+  # Island / loch labels
+  geom_sf_text(
+    data      = island_labels,
+    aes(label = name),
+    size      = 3.2,
+    fontface  = "italic",
+    color     = "gray25",
+    nudge_y   = 0.05
+  ) +
+  coord_sf(xlim = xlims, ylim = ylims) +
   theme_minimal(base_family = "serif", base_size = 12) +
   labs(
-    title    = NULL,
-    subtitle = NULL,
-    caption  = "**Figure 3.** Hotspots on islands of known predation."
+    title   = NULL,
+    caption = "**Figure 3.** Co-occurence of seagrass, otters, and crabs in areas of known predation. Blue boxes indicate all regions or islands in which otter spraints contained green shore crabs. All regions examined across the four studies contained green shore crab in spraints except for one, the island of Tiree. Red dots indicate hotspots, as first seen in Figure 2, where seagrass, otters, and crabs occur filtered to only show those that occur within study regions with confirmed predation of crabs by otters."
   ) +
   theme(
     plot.caption          = element_textbox_simple(
-                              size   = 12,
+                              size   = 11,
                               family = "serif",
                               margin = margin(t = 10),
                               hjust  = 0
