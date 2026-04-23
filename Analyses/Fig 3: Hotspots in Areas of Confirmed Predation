@@ -25,12 +25,10 @@ island_masks <- list(
 )
 
 all_islands_mask <- do.call(c, island_masks) %>% st_union()
-
-# Highlight mask (all locations excpet Tiree)
 highlight_masks <- island_masks[names(island_masks) != "Tiree"]
 highlight_union <- do.call(c, highlight_masks) %>% st_union()
 
-# 2. geo Labels
+# 2. Geo Labels
 island_labels <- data.frame(
   name = c("Skye", "Pabay", "Barra", "North Uist", "South Uist",
            "Tiree", "Coll", "Eigg",
@@ -39,7 +37,9 @@ island_labels <- data.frame(
            -4.83, -5.20, -1.25),
   lat  = c(57.35, 57.30, 57.00, 57.60, 57.28, 56.50, 56.63, 56.90,
             56.22, 57.98, 60.95)
-) %>% st_as_sf(coords = c("lon", "lat"), crs = 4326)
+) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(27700)
 
 # 3. Load Data
 otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
@@ -75,14 +75,13 @@ hotspots           <- st_transform(hotspots_p, 4326)
 # 5. Base map data
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf")
 
-# Shared coordinate limits
-xlims <- c(-8.0, 0.0)
+# Widen X-limits to provide more horizontal canvas space
+xlims <- c(-9.5, 0.5) 
 ylims <- c(55.8, 61.2)
 
 # Figure
-ggplot() +
+p <- ggplot() +
   geom_sf(data = uk_land, fill = "gray95", color = "gray80") +
-  # Study region highlights (all except Tiree)
   geom_sf(
     data      = highlight_union,
     fill      = "#2166ac",
@@ -90,11 +89,8 @@ ggplot() +
     alpha     = 0.15,
     linewidth = 0.4
   ) +
-  # Seagrass meadows
   geom_sf(data = seagrass, color = "seagreen", alpha = 0.2, size = 0.8) +
-  # Hotspots on top
   geom_sf(data = hotspots, color = "red", size = 3, shape = 18) +
-  # Island / loch labels
   geom_sf_text(
     data      = island_labels,
     aes(label = name),
@@ -103,18 +99,24 @@ ggplot() +
     color     = "gray25",
     nudge_y   = 0.05
   ) +
-  coord_sf(xlim = xlims, ylim = ylims) +
+  coord_sf(xlim = xlims, ylim = ylims, expand = FALSE) +
   theme_minimal(base_family = "serif", base_size = 12) +
   labs(
-    title   = NULL,
-    caption = "**Figure 3.** Co-occurence of seagrass, otters, and crabs in areas of known predation. Blue boxes indicate all regions or islands in which otter spraints contained green shore crabs. All regions examined across the four studies contained green shore crab in spraints except for one, the island of Tiree. Red dots indicate hotspots, as first seen in Figure 2, where seagrass, otters, and crabs occur filtered to only show those that occur within study regions with confirmed predation of crabs by otters."
+    x        = NULL,
+    y        = NULL,
+    caption = "**Figure 3.** Spraint study regions and co-occurrence hotspots of otters, seagrass, and crabs in Scotland. Blue boxes indicate regions where otter spraints contained green shore crab. Spraints from all regions contained green shore crab except those from Tiree. Red dots indicate hotspots, as seen in Figure 2, where seagrass, otters, and crabs occur within these regions."
   ) +
   theme(
-    plot.caption          = element_textbox_simple(
-                              size   = 11,
-                              family = "serif",
-                              margin = margin(t = 10),
-                              hjust  = 0
-                            ),
-    plot.caption.position = "plot"
+    plot.caption = element_textbox_simple(
+      size       = 12,
+      family     = "serif",
+      margin     = margin(t = 15, r = 10, b = 10, l = 10),
+      lineheight = 1.2,
+      width      = unit(1, "npc"), # Forces text to fill the wide horizontal space
+      hjust      = 0
+    ),
+    plot.caption.position = "plot",
+    plot.margin = margin(10, 20, 10, 20)
   )
+
+print(p)
