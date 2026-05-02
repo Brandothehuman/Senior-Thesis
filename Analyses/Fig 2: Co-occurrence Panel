@@ -11,7 +11,7 @@ library(ggspatial)
 OTTER_RANGE_M  <- 19300
 CRAB_BUFFER_M  <- 100
 DENSITY_RADIUS <- 5000
-PROJ_CRS       <- 27700 
+PROJ_CRS        <- 27700 
 
 #  Data Import
 otters <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv") %>%
@@ -57,15 +57,18 @@ gb_island <- st_intersection(uk_land, gb_clip_mask) %>%
   st_make_valid() %>%
   st_transform(PROJ_CRS)
 
-ireland <- ne_countries(scale = 10, country = "ireland", returnclass = "sf") %>%
+# Get the full island of Ireland (Republic + Northern Ireland)
+ireland <- ne_countries(scale = 10, country = c("ireland", "united kingdom"), returnclass = "sf") %>%
+  st_union() %>%
+  st_make_valid() %>%
   st_transform(PROJ_CRS) %>%
-  st_make_valid()
+  st_intersection(st_as_sfc(st_bbox(c(xmin = -11, xmax = -5, ymin = 51, ymax = 56), crs = 4326)) %>% st_transform(PROJ_CRS))
 
-#  Coastal Ribbon
+# Coastal Ribbon
 dist_10_miles  <- 10 * 1609.34
 coastal_buffer <- st_buffer(gb_island, dist_10_miles)
 marine_ribbon  <- st_difference(coastal_buffer, gb_island) %>%
-  st_difference(st_union(ireland)) %>%
+  st_difference(ireland) %>%
   st_make_valid()
 
 # Grid & IDW
@@ -134,12 +137,10 @@ map_limits <- coord_sf(
   expand = FALSE
 )
 
-#  Basemap 
-world_proj <- ne_countries(scale = "medium", returnclass = "sf") %>% st_transform(PROJ_CRS)
-
 # Panel A
 panel_a <- ggplot() +
-  geom_sf(data = world_proj,    fill = "gray95", color = "gray80") +
+  geom_sf(data = ireland,   fill = "gray95", color = "gray80") +
+  geom_sf(data = gb_island, fill = "gray95", color = "gray80") +
   geom_sf(data = seagrass,      color = "seagreen", size = 0.5, alpha = 0.2) +
   geom_sf(data = target_meadows_p, color = "chartreuse4", size = 2, shape = 16) +
   map_limits + map_theme +
@@ -149,8 +150,8 @@ panel_a <- add_map_annotations(add_box(panel_a))
 
 # Panel B
 panel_b <- ggplot() +
-  geom_sf(data = ireland,    fill = "gray95", color = "gray80") +
-  geom_sf(data = world_proj, fill = "gray95", color = "gray80") +
+  geom_sf(data = ireland,   fill = "gray95", color = "gray80") +
+  geom_sf(data = gb_island, fill = "gray95", color = "gray80") +
   geom_sf(data = ocean_idw_proj, aes(fill = var1.pred), color = NA, alpha = 0.8) +
   scale_fill_viridis_c(option = "inferno", name = "Meadow\nDensity (n)") +
   map_limits + map_theme +
