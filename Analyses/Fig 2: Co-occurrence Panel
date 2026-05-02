@@ -5,57 +5,49 @@ library(gstat)
 library(stars)
 library(ggtext)
 library(patchwork)
+library(ggspatial)
 
-#Constants
+# Constants
 OTTER_RANGE_M  <- 19300
 CRAB_BUFFER_M  <- 100
 DENSITY_RADIUS <- 5000
+PROJ_CRS       <- 27700 
 
-# 1. Data Import
+#  Data Import
 otters <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv") %>%
   filter(!is.na(Longitude) & !is.na(Latitude)) %>%
   st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>%
-  st_transform(27700)
+  st_transform(PROJ_CRS)
 
 seagrass <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv") %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>%
-  st_transform(27700)
+  st_transform(PROJ_CRS)
 
 crabs <- read_csv("https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv") %>%
   filter(!is.na(`Longitude (WGS84)`) & !is.na(`Latitude (WGS84)`)) %>%
   st_as_sf(coords = c("Longitude (WGS84)", "Latitude (WGS84)"), crs = 4326) %>%
-  st_transform(27700)
+  st_transform(PROJ_CRS)
 
 seagrass_with_crabs <- seagrass[lengths(st_is_within_distance(seagrass, crabs, dist = CRAB_BUFFER_M)) > 0, ]
 target_meadows_p    <- seagrass_with_crabs[lengths(st_is_within_distance(seagrass_with_crabs, otters, dist = OTTER_RANGE_M)) > 0, ]
 
-# 2. Density Calculation
+# Density Calculation
 stopifnot(nrow(target_meadows_p) > 0)
-message(nrow(target_meadows_p), " meadows retained after filtering")
-
 target_meadows_p$density <- lengths(
   st_is_within_distance(target_meadows_p, target_meadows_p, dist = DENSITY_RADIUS)
 )
 
-#  Panel A (back-transform to WGS84)
-seagrass_wgs  <- st_transform(seagrass,        4326)
-target_meadows <- st_transform(target_meadows_p, 4326)
-
-# 3. Land Layers 
+# Land Layers & NI Exclusion
 uk_land <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf") %>%
   st_transform(4326) %>%
   st_make_valid()
 
-gb_bbox <- st_bbox(c(xmin = -9, xmax = 2, ymin = 49, ymax = 61), crs = st_crs(4326)) %>%
+gb_bbox <- st_bbox(c(xmin = -9, xmax = 2, ymin = 49, ymax = 61), crs = 4326) %>%
   st_as_sfc()
 
 ni_exclusion <- st_polygon(list(rbind(
-  c(-8.25, 54.00),
-  c(-5.25, 54.00),
-  c(-5.25, 55.35),
-  c(-8.25, 55.35),
-  c(-8.25, 54.00)
+  c(-8.25, 54.00), c(-5.25, 54.00), c(-5.25, 55.35), c(-8.25, 55.35), c(-8.25, 54.00)
 ))) %>% st_sfc(crs = 4326)
 
 gb_clip_mask <- st_difference(gb_bbox, ni_exclusion)
@@ -63,85 +55,112 @@ gb_clip_mask <- st_difference(gb_bbox, ni_exclusion)
 gb_island <- st_intersection(uk_land, gb_clip_mask) %>%
   st_union() %>%
   st_make_valid() %>%
-  st_transform(27700)
+  st_transform(PROJ_CRS)
 
 ireland <- ne_countries(scale = 10, country = "ireland", returnclass = "sf") %>%
-  st_transform(27700) %>%
+  st_transform(PROJ_CRS) %>%
   st_make_valid()
 
-#4. Coastal Ribbon
+#  Coastal Ribbon
 dist_10_miles  <- 10 * 1609.34
 coastal_buffer <- st_buffer(gb_island, dist_10_miles)
 marine_ribbon  <- st_difference(coastal_buffer, gb_island) %>%
   st_difference(st_union(ireland)) %>%
   st_make_valid()
 
-# 5. Grid
-output_bbox <- st_bbox(c(xmin = -9, xmax = 1, ymin = 54.5, ymax = 61),
-                       crs = st_crs(4326)) %>%
+# Grid & IDW
+output_bbox_poly <- st_bbox(c(xmin = -9, xmax = 1, ymin = 54.5, ymax = 61), crs = 4326) %>%
   st_as_sfc() %>%
-  st_transform(27700) %>%
-  st_bbox()
+  st_transform(PROJ_CRS)
 
-grid <- st_as_stars(output_bbox, dx = 2000, dy = 2000) %>%
-  st_set_crs(27700)
+grid <- st_as_stars(st_bbox(output_bbox_poly), dx = 2000, dy = 2000) %>%
+  st_set_crs(PROJ_CRS)
 
-# 6. IDW Interpolation 
 idw_res <- idw(density ~ 1, target_meadows_p, grid, idp = 2.0)
 idw_sf  <- st_as_sf(idw_res) %>% st_make_valid()
 
-# 7. Clip Heatmap to Ribbon
-ocean_idw      <- st_intersection(idw_sf, marine_ribbon)
-ocean_idw_4326 <- st_transform(ocean_idw, 4326)
+ocean_idw_proj <- st_intersection(idw_sf, marine_ribbon)
 
-# 8. Basemap (WGS84)
-world        <- ne_countries(scale = "medium", returnclass = "sf")
-uk_outline   <- ne_countries(scale = 10, country = "united kingdom", returnclass = "sf")
-ireland_4326 <- ne_countries(scale = 10, country = "ireland", returnclass = "sf")
+# Format Map
+axis_weight <- 0.8
 
-#9. Panel A – Co-occurrence Map 
+map_theme <- theme_bw(base_family = "serif", base_size = 12) +
+  theme(
+    panel.grid.major   = element_blank(),
+    panel.grid.minor   = element_blank(),
+    panel.border       = element_blank(),
+    axis.line.x.bottom = element_line(color = "black", linewidth = axis_weight),
+    axis.line.y.left   = element_line(color = "black", linewidth = axis_weight),
+    axis.ticks         = element_line(color = "black", linewidth = axis_weight),
+    axis.ticks.length  = unit(0.15, "cm"),
+    axis.text          = element_text(size = 9, family = "serif"),
+    plot.title         = element_text(size = 12, family = "serif")
+  )
+
+add_box <- function(plot) {
+  plot +
+    annotate("segment", x = -Inf, xend = Inf, y = Inf, yend = Inf, color = "black", linewidth = 0.3) +
+    annotate("segment", x = Inf, xend = Inf, y = -Inf, yend = Inf, color = "black", linewidth = 0.3)
+}
+
+add_map_annotations <- function(plot) {
+  plot +
+    annotation_scale(
+      location      = "br",
+      width_hint    = 0.25,
+      style         = "bar",
+      line_width    = 0.5,
+      text_family   = "serif",
+      text_cex      = 0.7,
+      unit_category = "metric"
+    ) +
+    annotation_north_arrow(
+      location    = "tr",
+      which_north = "grid",
+      height = unit(0.6, "cm"),
+      width  = unit(0.4, "cm"),
+      style  = north_arrow_orienteering(
+        fill     = c("black", "white"),
+        text_col = "transparent"
+      )
+    )
+}
+
+# Coordinate limits 
+map_limits <- coord_sf(
+  xlim = st_bbox(output_bbox_poly)[c("xmin", "xmax")],
+  ylim = st_bbox(output_bbox_poly)[c("ymin", "ymax")],
+  crs = PROJ_CRS, 
+  expand = FALSE
+)
+
+#  Basemap 
+world_proj <- ne_countries(scale = "medium", returnclass = "sf") %>% st_transform(PROJ_CRS)
+
+# Panel A
 panel_a <- ggplot() +
-  geom_sf(data = world,         fill = "gray95", color = "gray80") +
-  geom_sf(data = seagrass_wgs,  color = "seagreen", size = 0.5, alpha = 0.2) +
-  geom_sf(data = target_meadows, color = "chartreuse4", size = 2, shape = 16) +
-  coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
-  theme_minimal(base_family = "serif", base_size = 12) +
-  labs(
-    title = "A"
-  ) +
-  theme(
-    plot.title = element_textbox_simple(
-      size   = 11,
-      family = "serif",
-      margin = margin(b = 6),
-      hjust  = 0
-    )
-  )
+  geom_sf(data = world_proj,    fill = "gray95", color = "gray80") +
+  geom_sf(data = seagrass,      color = "seagreen", size = 0.5, alpha = 0.2) +
+  geom_sf(data = target_meadows_p, color = "chartreuse4", size = 2, shape = 16) +
+  map_limits + map_theme +
+  labs(title = "A", x = NULL, y = NULL)
 
-# 10. Panel B IDW Density Heatmap 
+panel_a <- add_map_annotations(add_box(panel_a))
+
+# Panel B
 panel_b <- ggplot() +
-  geom_sf(data = ireland_4326, fill = "gray95", color = "gray80") +
-  geom_sf(data = uk_outline,   fill = "gray95", color = "gray80") +
-  geom_sf(data = ocean_idw_4326, aes(fill = var1.pred), color = NA, alpha = 0.8) +
-  scale_fill_viridis_c(option = "inferno", name = "Density\nIntensity") +
-  coord_sf(xlim = c(-9, 1), ylim = c(54.5, 61), expand = FALSE) +
-  theme_minimal(base_family = "serif", base_size = 12) +
-  labs(
-    title = "B"
-  ) +
-  theme(
-    plot.title = element_textbox_simple(
-      size   = 11,
-      family = "serif",
-      margin = margin(b = 6),
-      hjust  = 0
-    )
-  )
+  geom_sf(data = ireland,    fill = "gray95", color = "gray80") +
+  geom_sf(data = world_proj, fill = "gray95", color = "gray80") +
+  geom_sf(data = ocean_idw_proj, aes(fill = var1.pred), color = NA, alpha = 0.8) +
+  scale_fill_viridis_c(option = "inferno", name = "Meadow\nDensity (n)") +
+  map_limits + map_theme +
+  labs(title = "B", x = NULL, y = NULL)
 
-# 11. Caption 
+panel_b <- add_map_annotations(add_box(panel_b))
+
 merged_caption <- "**Figure 2.** **(A)** Seagrass meadows (*Zostera marina* / *Zostera noltii*) containing green shore crab occurrences within 100 m and Eurasian otter occurrences within 19.3 km (maximum reported coastal home range for marine-foraging otters in Scotland). **(B)** Inverse distance weighted (IDW) interpolation of co-occurrence hotspots within 10 miles of the Scottish coastline, based on the same filtering criteria."
 
-#12. Combine with patchwork 
+#  Combine
 (panel_a | panel_b) +
   plot_annotation(
     caption = merged_caption,
