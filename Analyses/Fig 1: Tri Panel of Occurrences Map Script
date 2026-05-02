@@ -3,17 +3,30 @@ library(tidyverse)
 library(rnaturalearth)
 library(patchwork)
 library(ggtext)
+library(ggspatial)
 
 # 1. Github URLs
 otter_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/otter_sightings_cleaned.csv"
 crab_url  <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/crab_sightings_cleaned.csv"
 grass_url <- "https://raw.githubusercontent.com/Brandothehuman/Senior-Thesis/main/Output/Processed/seagrass_meadows_cleaned.csv"
 
-# 2. Get background map data
-world      <- ne_countries(scale = "medium", returnclass = "sf")
-map_limits <- coord_sf(xlim = c(-10, 2), ylim = c(54, 61))
+# 2. map data
+target_crs <- 32630
 
-# 3. Helper function
+world <- ne_countries(scale = "medium", returnclass = "sf") %>% st_transform(target_crs)
+
+bbox_pts <- st_sfc(
+  st_point(c(-10, 54)), st_point(c(2, 54)),
+  st_point(c(-10, 61)), st_point(c(2, 61)),
+  crs = 4326
+) %>% st_transform(target_crs) %>% st_coordinates()
+
+map_limits <- coord_sf(
+  xlim = range(bbox_pts[, "X"]),
+  ylim = range(bbox_pts[, "Y"]),
+  crs  = target_crs
+)
+
 process_species_data <- function(url) {
   read.csv(url, check.names = FALSE) %>%
     rename_with(tolower) %>%
@@ -22,42 +35,94 @@ process_species_data <- function(url) {
       lat = matches("lat")
     ) %>%
     filter(!is.na(lon) & !is.na(lat)) %>%
-    st_as_sf(coords = c("lon", "lat"), crs = 4326)
+    st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+    st_transform(target_crs)
 }
 
-# 4. Load and Process Data
+# 4. Load occurence Data
 otters_sf   <- process_species_data(otter_url)
 seagrass_sf <- process_species_data(grass_url)
 crabs_sf    <- process_species_data(crab_url)
 
-# 5. Shared theme
-map_theme <- theme_minimal(base_family = "serif", base_size = 12) +
-  theme(plot.title = element_text(size = 12, family = "serif"))
+# 5. Map format
+axis_weight <- 0.8
 
-# 6. Create Plots
+map_theme <- theme_bw(base_family = "serif", base_size = 12) +
+  theme(
+    panel.grid.major   = element_blank(),
+    panel.grid.minor   = element_blank(),
+    panel.border       = element_blank(),
+    axis.line.x.bottom = element_line(color = "black", linewidth = axis_weight),
+    axis.line.y.left   = element_line(color = "black", linewidth = axis_weight),
+    axis.ticks         = element_line(color = "black", linewidth = axis_weight),
+    axis.ticks.length  = unit(0.15, "cm"),
+    axis.text          = element_text(size = 9, family = "serif"),
+    plot.title         = element_text(size = 12, family = "serif")
+  )
+
+add_box <- function(plot) {
+  plot +
+    annotate("segment",
+      x = -Inf, xend = Inf, y = Inf, yend = Inf,
+      color = "black", linewidth = 0.3
+    ) +
+    annotate("segment",
+      x = Inf, xend = Inf, y = -Inf, yend = Inf,
+      color = "black", linewidth = 0.3
+    )
+}
+
+# 6. Aannotations
+add_map_annotations <- function(plot) {
+  plot +
+    annotation_scale(
+      location      = "br",
+      width_hint    = 0.25,
+      style         = "bar",
+      line_width    = 0.5,
+      text_family   = "serif",
+      text_cex      = 0.7,
+      unit_category = "metric"
+    ) +
+    annotation_north_arrow(
+      location    = "tr",
+      which_north = "grid",
+      height = unit(0.6, "cm"),
+      width  = unit(0.4, "cm"),
+      style  = north_arrow_orienteering(
+        fill     = c("black", "white"),
+        text_col = "transparent"
+      )
+    )
+}
+
+# 7. Create Plots
 p1 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = otters_sf, color = "steelblue", size = 0.3, alpha = 0.4) +
   map_limits +
   map_theme +
-  labs(title = "Eurasian Otters")
+  labs(title = "A. Eurasian Otters", x = NULL, y = NULL)
+p1 <- add_map_annotations(add_box(p1))
 
 p2 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = seagrass_sf, color = "seagreen", size = 0.3, alpha = 0.4) +
   map_limits +
   map_theme +
-  labs(title = "Seagrass Meadows")
+  labs(title = "B. Seagrass Meadows", x = NULL, y = NULL)
+p2 <- add_map_annotations(add_box(p2))
 
 p3 <- ggplot() +
   geom_sf(data = world, fill = "gray95", color = "gray80") +
   geom_sf(data = crabs_sf, color = "orange", size = 0.3, alpha = 0.4) +
   map_limits +
   map_theme +
-  labs(title = "Green Shore Crabs")
+  labs(title = "C. Green Shore Crabs", x = NULL, y = NULL)
+p3 <- add_map_annotations(add_box(p3))
 
-# 7. Combine with patchwork
-caption_text <- "**Figure 1.** Occurrence of Eurasian otters, seagrass meadows (*Zostera marina* / *Zostera noltii*), and green shore crabs across Scotland."
+# 8. Combine with patchwork
+caption_text <- "**Figure 1.** Occurrence of (A) Eurasian otters, (B) seagrass meadows (*Zostera marina* / *Zostera noltii*), and (C) green shore crabs across Scotland."
 
 combined_plot <- (p1 | p2 | p3) +
   plot_annotation(
@@ -65,11 +130,11 @@ combined_plot <- (p1 | p2 | p3) +
     caption = caption_text,
     theme   = theme(
       plot.caption = element_textbox_simple(
-                       size   = 12,
-                       family = "serif",
-                       margin = margin(t = 10),
-                       hjust  = 0
-                     ),
+        size   = 12,
+        family = "serif",
+        margin = margin(t = 10),
+        hjust  = 0
+      ),
       plot.caption.position = "plot"
     )
   )
